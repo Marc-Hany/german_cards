@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>German Cards</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#1d4ed8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="German Cards">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#1d4ed8;--bad:#dc2626;
+      --m:#2563eb;--f:#dc2626;--n:#16a34a}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1a1d24;--text:#f3f4f6;--muted:#9ca3af;--line:#2b2f38;--accent:#3b82f6;--bad:#f87171;
+      --m:#60a5fa;--f:#f87171;--n:#4ade80}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(72px + env(safe-area-inset-bottom))}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:8px 0 16px}
+input,button{font:inherit;color:inherit}
+input[type=text]{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:18px}
+button{border:0;border-radius:12px;padding:12px 16px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+button.ghost{background:var(--card);color:var(--text);border:1px solid var(--line)}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0}
+.muted{color:var(--muted);font-size:14px}
+.de{font-size:18px;font-weight:600}
+.pl{font-size:13px;color:var(--muted);font-weight:400}
+.item{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.item .en{color:var(--muted)}
+.a-m{color:var(--m);font-weight:800}.a-f{color:var(--f);font-weight:800}.a-n{color:var(--n);font-weight:800}
+.g-m{border-left:6px solid var(--m)}.g-f{border-left:6px solid var(--f)}.g-n{border-left:6px solid var(--n)}
+.legend{display:flex;gap:14px;font-size:15px;margin:0 2px 10px}
+.flash{min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:30px;font-weight:700;cursor:pointer;user-select:none;padding:24px;gap:6px}
+.flash small{font-size:15px;font-weight:400;color:var(--muted);margin-top:6px}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;background:none;color:var(--muted);border-radius:0;padding:14px 4px}
+nav button.on{color:var(--accent)}
+.grades button.again{background:var(--bad)}
+.hide{display:none}
+.icon{cursor:pointer;padding:0 3px}
+label.opt{display:block;margin:4px 0}
+</style>
+</head>
+<body>
+<main>
+  <section id="view-add">
+    <h1>Add a word</h1>
+    <div class="legend"><span class="a-m">der</span><span class="a-f">die</span><span class="a-n">das</span></div>
+    <input id="word" type="text" placeholder="e.g. Bahnhof  (or: der Bahnhof)" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
+    <div id="status" class="muted" style="margin:8px 2px;min-height:20px"></div>
+    <div id="recent"></div>
+  </section>
+
+  <section id="view-review" class="hide">
+    <h1>Review <span id="due" class="muted"></span></h1>
+    <label class="muted opt"><input type="checkbox" id="rev"> English → German</label>
+    <label class="muted opt"><input type="checkbox" id="hide"> Hide article on the front (test myself)</label>
+    <div id="rcard"></div>
+  </section>
+
+  <section id="view-list" class="hide">
+    <h1>Words <span id="count" class="muted"></span></h1>
+    <input id="filter" type="text" placeholder="Search…" autocomplete="off">
+    <button class="ghost hide" id="fill" style="width:100%;margin-top:10px"></button>
+    <div id="list"></div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px">Backup &amp; export (your words live only on this device)</div>
+      <div class="row">
+        <button class="ghost" id="bk">Backup JSON</button>
+        <button class="ghost" id="anki">Anki TSV</button>
+      </div>
+      <div class="row" style="margin-top:8px"><button class="ghost" id="imp">Restore backup</button></div>
+      <input type="file" id="file" accept=".json,application/json" class="hide">
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button data-v="add" class="on">➕<br><small>Add</small></button>
+  <button data-v="review">🃏<br><small>Review</small></button>
+  <button data-v="list">📚<br><small>Words</small></button>
+</nav>
+
+<script>
+"use strict";
+const KEY = "germancards.words.v1", OPT_KEY = "germancards.opts.v1";
+let words = [];
+try { words = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { words = []; }
+let opts = { hide: true, rev: false };
+try { Object.assign(opts, JSON.parse(localStorage.getItem(OPT_KEY) || "{}")); } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(words)); } catch (e) { alert("Could not save: storage full or blocked."); } };
+const saveOpts = () => { try { localStorage.setItem(OPT_KEY, JSON.stringify(opts)); } catch (e) {} };
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function dstr(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+const today = () => dstr(new Date());
+const inDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return dstr(d); };
+
+/* ---------- articles ---------- */
+const ART = { m: "der", f: "die", n: "das" };
+function deHTML(w, withArticle = true){
+  const gs = [w.g, w.g2].filter(Boolean);
+  const a = withArticle && gs.length ? gs.map(g => `<span class="a-${g}">${ART[g]}</span>`).join("/") + " " : "";
+  return a + esc(w.de);
+}
+const plHTML = w => w.pl ? `<div class="pl">Pl.: ${esc(w.pl)}</div>` : "";
+const gcls = w => w.g ? "g-" + w.g : "";
+
+/*PURE-START*/
+function germanSection(txt){
+  const i = txt.indexOf("{{Sprache|Deutsch}}");
+  if (i < 0) return "";
+  const rest = txt.slice(i);
+  const m = rest.search(/\n== /);
+  return m < 0 ? rest : rest.slice(0, m);
+}
+function nounInfo(sec){
+  const m = sec.match(/\{\{Deutsch [^|{}\n]*Übersicht([\s\S]*?)\n\}\}/);
+  if (!m) return null;
+  const b = m[1];
+  const g1 = (b.match(/\|\s*Genus(?:\s*1)?\s*=\s*([mfn])\b/) || [])[1];
+  if (!g1) return null;
+  const g2 = (b.match(/\|\s*Genus\s*2\s*=\s*([mfn])\b/) || [])[1] || "";
+  let pl = (b.match(/\|\s*Nominativ Plural(?:\s*1)?\s*=\s*([^\n|]+)/) || [])[1] || "";
+  pl = pl.replace(/\[\[|\]\]|'''|''/g, "").replace(/^(der|die|das)\s+/i, "").trim();
+  if (/^[—–-]+$/.test(pl)) pl = "";
+  return { g: g1, g2, pl };
+}
+/*PURE-END*/
+
+async function wikiPage(title){
+  const url = "https://de.wiktionary.org/w/api.php?action=parse&prop=wikitext&redirects=1&format=json&formatversion=2&origin=*&page=" + encodeURIComponent(title);
+  const r = await fetch(url);
+  const j = await r.json();
+  if (j.error) return null;                       // page does not exist
+  return { title: j.parse.title, text: j.parse.wikitext };
+}
+
+async function lookupArticle(de){
+  if (/\s/.test(de)) return null;                 // phrases: no article lookup
+  const first = de[0];
+  const cands = first === first.toLowerCase() && first !== first.toUpperCase() ? [de, first.toUpperCase() + de.slice(1)] : [de];
+  for (const c of cands) {
+    const p = await wikiPage(c);
+    if (!p) continue;
+    const sec = germanSection(p.text);
+    if (!sec) continue;                           // page exists only for other languages
+    const info = nounInfo(sec);
+    return info ? { title: p.title, ...info } : null;   // German word, but not a noun
+  }
+  return null;
+}
+
+function applyLookup(w, r){
+  w.gdone = true; w.gpending = false;
+  if (!r || !r.g) return;
+  if (!/\s/.test(r.title)) w.de = r.title;
+  const gs = [r.g, r.g2].filter(Boolean);
+  if (!w.g) { w.g = gs[0]; w.g2 = gs[1] || ""; }
+  else { w.g2 = gs.find(x => x !== w.g) || w.g2 || ""; }
+  if (r.pl) w.pl = r.pl;
+}
+
+/* ---------- translation (free, no key) ---------- */
+async function translate(word){
+  try {
+    const r = await fetch("https://translate.googleapis.com/translate_a/single?client=gtx&sl=de&tl=en&dt=t&dt=bd&q=" + encodeURIComponent(word));
+    if (r.ok) {
+      const j = await r.json();
+      const en = (j[0] || []).map(x => x[0]).join("").trim();
+      let alts = "";
+      if (Array.isArray(j[1])) alts = j[1].map(e => e[0] + ": " + (e[1] || []).slice(0,4).join(", ")).join(" · ");
+      if (en) return { en, alts };
+    }
+  } catch (e) {}
+  const r2 = await fetch("https://api.mymemory.translated.net/get?langpair=de|en&q=" + encodeURIComponent(word));
+  const j2 = await r2.json();
+  const en = (j2.responseData && j2.responseData.translatedText || "").trim();
+  if (!en) throw new Error("no translation");
+  return { en, alts: "" };
+}
+
+async function addWord(raw){
+  let de = raw.trim().replace(/\s+/g, " ");
+  if (!de) return;
+  let typedG = "";
+  const m = de.match(/^(der|die|das)\s+(\S.*)$/i);
+  if (m) { typedG = { der: "m", die: "f", das: "n" }[m[1].toLowerCase()]; de = m[2]; }
+  if (words.some(w => w.de.toLowerCase() === de.toLowerCase())) { setStatus("Already saved: " + de); return; }
+  setStatus("Looking up…");
+  const [t, l] = await Promise.allSettled([translate(de), lookupArticle(de)]);
+  const w = { id: Date.now() + Math.random(), de, en: "", alts: "", g: "", g2: "", pl: "", pending: false, gpending: false, gdone: false,
+              added: today(), due: today(), interval: 0, ease: 2.5, reps: 0 };
+  if (t.status === "fulfilled") { w.en = t.value.en; w.alts = t.value.alts; } else w.pending = true;
+  if (l.status === "fulfilled") applyLookup(w, l.value); else w.gpending = true;
+  if (typedG) {                                   // an article you typed always wins
+    const others = [w.g, w.g2].filter(x => x && x !== typedG);
+    w.g = typedG; w.g2 = others[0] || "";
+  }
+  if (words.some(x => x.de.toLowerCase() === w.de.toLowerCase())) { setStatus("Already saved: " + w.de); return; }
+  words.unshift(w); save();
+  const bits = [];
+  if (w.g) bits.push(ART[w.g] + (w.g2 ? "/" + ART[w.g2] : "") + " " + w.de);
+  if (w.pending || w.gpending) bits.push("offline – will finish when you're back online");
+  setStatus("Saved ✓ " + bits.join(" · "));
+  renderRecent();
+}
+
+async function retryPending(){
+  let changed = false;
+  for (const w of words.filter(w => w.pending || w.gpending)) {
+    try {
+      if (w.pending) { const t = await translate(w.de); w.en = t.en; w.alts = t.alts; w.pending = false; changed = true; }
+      if (w.gpending) { applyLookup(w, await lookupArticle(w.de)); changed = true; }
+    } catch (e) { break; }
+  }
+  if (changed) { save(); renderRecent(); renderList(); }
+}
+window.addEventListener("online", retryPending);
+
+async function fillArticles(){
+  const todo = words.filter(w => !w.gdone);
+  const btn = $("#fill"); let i = 0;
+  for (const w of todo) {
+    btn.textContent = "Looking up " + (++i) + "/" + todo.length + "…";
+    try { applyLookup(w, await lookupArticle(w.de)); save(); }
+    catch (e) { alert("Network problem. Try again later."); break; }
+  }
+  renderList();
+}
+
+/* ---------- speech ---------- */
+function speak(text){
+  if (!("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text); u.lang = "de-DE";
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+const sayText = w => (w.g ? ART[w.g] + " " : "") + w.de;
+
+/* ---------- spaced repetition (simplified SM-2) ---------- */
+function grade(w, g){ // 0 again, 1 hard, 2 good, 3 easy
+  if (g === 0) { w.reps = 0; w.interval = 0; w.ease = Math.max(1.3, w.ease - 0.2); w.due = today(); return; }
+  w.ease = Math.max(1.3, w.ease + [0, -0.15, 0, 0.15][g]);
+  w.reps += 1;
+  if (w.reps === 1) w.interval = 1;
+  else if (w.reps === 2) w.interval = 3;
+  else w.interval = Math.max(1, Math.round(w.interval * w.ease * (g === 1 ? 0.8 : g === 3 ? 1.3 : 1)));
+  w.due = inDays(w.interval);
+}
+
+/* ---------- views ---------- */
+function setStatus(t){ $("#status").innerHTML = esc(t); }
+
+function renderRecent(){
+  $("#recent").innerHTML = words.slice(0, 8).map(w =>
+    `<div class="card item ${gcls(w)}"><div><div class="de">${deHTML(w)}</div><div class="en">${w.pending ? "⏳ pending…" : esc(w.en)}</div>${plHTML(w)}</div><span class="icon" data-say="${w.id}">🔊</span></div>`
+  ).join("");
+}
+
+let queue = [], showing = false;
+function buildQueue(){
+  queue = words.filter(w => !w.pending && w.due <= today()).sort(() => Math.random() - 0.5);
+  showing = false;
+}
+function renderReview(){
+  $("#due").textContent = queue.length ? "· " + queue.length + " due" : "";
+  const box = $("#rcard");
+  if (!queue.length) { box.innerHTML = `<div class="card flash" style="cursor:default">🎉<small>Nothing due right now.</small></div>`; return; }
+  const w = queue[0], rev = opts.rev;
+  if (!showing) {
+    const front = rev ? esc(w.en) : deHTML(w, !opts.hide);
+    box.innerHTML = `<div class="card flash" id="flip">${front}<small>tap to flip</small></div>`;
+    $("#flip").onclick = () => { showing = true; if (!rev) speak(sayText(w)); renderReview(); };
+  } else {
+    const top = rev ? esc(w.en) : deHTML(w), bottom = rev ? deHTML(w) : esc(w.en);
+    box.innerHTML = `<div class="card flash ${gcls(w)}" id="flip2">${top}<hr style="width:60%;border:0;border-top:1px solid var(--line)">${bottom}${plHTML(w)}${w.alts ? `<small>${esc(w.alts)}</small>` : ""}</div>
+      <div class="row grades"><button class="again" data-gr="0">Again</button><button class="ghost" data-gr="1">Hard</button><button data-gr="2">Good</button><button class="ghost" data-gr="3">Easy</button></div>`;
+    $("#flip2").onclick = () => speak(sayText(w));
+    box.querySelectorAll("[data-gr]").forEach(b => b.onclick = () => {
+      grade(w, +b.dataset.gr); save(); queue.shift();
+      if (w.due <= today()) queue.push(w);        // "again" comes back this session
+      showing = false; renderReview();
+    });
+  }
+}
+
+function renderList(){
+  const q = $("#filter").value.trim().toLowerCase();
+  const rows = words.filter(w => !q || w.de.toLowerCase().includes(q) || w.en.toLowerCase().includes(q));
+  $("#count").textContent = "· " + words.length;
+  const missing = words.filter(w => !w.gdone).length, fb = $("#fill");
+  fb.classList.toggle("hide", !missing);
+  fb.textContent = "Look up articles for " + missing + " word" + (missing === 1 ? "" : "s");
+  $("#list").innerHTML = rows.map(w =>
+    `<div class="card item ${gcls(w)}"><div style="min-width:0"><div class="de">${deHTML(w)}</div><div class="en">${esc(w.en || "…")}</div>${plHTML(w)}</div>
+     <div style="white-space:nowrap"><span class="icon" data-say="${w.id}">🔊</span><span class="icon" data-gc="${w.id}" title="change article">🏷️</span><span class="icon" data-edit="${w.id}">✏️</span><span class="icon" data-del="${w.id}">🗑️</span></div></div>`
+  ).join("") || `<div class="muted">No words yet.</div>`;
+}
+
+/* ---------- events ---------- */
+const byId = id => words.find(x => String(x.id) === id);
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-say],[data-edit],[data-del],[data-gc]");
+  if (!t) return;
+  if (t.dataset.say) speak(sayText(byId(t.dataset.say)));
+  else if (t.dataset.gc) {                        // cycle: none → der → die → das → none
+    const w = byId(t.dataset.gc), order = ["", "m", "f", "n"];
+    w.g = order[(order.indexOf(w.g) + 1) % 4]; w.g2 = ""; w.gdone = true; save(); renderList(); renderRecent();
+  } else if (t.dataset.edit) {
+    const w = byId(t.dataset.edit);
+    const v = prompt("Translation for “" + w.de + "”:", w.en);
+    if (v !== null) { w.en = v.trim(); w.pending = false; save(); renderList(); renderRecent(); }
+  } else if (t.dataset.del) {
+    const w = byId(t.dataset.del);
+    if (confirm("Delete “" + w.de + "”?")) { words = words.filter(x => x !== w); save(); renderList(); renderRecent(); }
+  }
+});
+
+$("#word").addEventListener("keydown", async e => {
+  if (e.key !== "Enter") return;
+  const v = e.target.value; e.target.value = "";
+  await addWord(v);
+});
+$("#filter").addEventListener("input", renderList);
+$("#fill").onclick = fillArticles;
+$("#rev").checked = opts.rev; $("#hide").checked = opts.hide;
+$("#rev").addEventListener("change", e => { opts.rev = e.target.checked; saveOpts(); showing = false; renderReview(); });
+$("#hide").addEventListener("change", e => { opts.hide = e.target.checked; saveOpts(); showing = false; renderReview(); });
+
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
+  ["add","review","list"].forEach(v => $("#view-" + v).classList.toggle("hide", v !== b.dataset.v));
+  if (b.dataset.v === "review") { buildQueue(); renderReview(); }
+  if (b.dataset.v === "list") renderList();
+  if (b.dataset.v === "add") $("#word").focus();
+});
+
+function download(name, text, type){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+const tab = s => String(s || "").replace(/\t|\n/g, " ");
+$("#bk").onclick = () => download("german-cards-backup-" + today() + ".json", JSON.stringify(words), "application/json");
+$("#anki").onclick = () => download("german-cards.tsv",
+  words.filter(w => w.en).map(w => tab((w.g ? ART[w.g] + " " : "") + w.de) + "\t" + tab(w.en) + "\t" + tab(w.pl)).join("\n"), "text/tab-separated-values");
+$("#imp").onclick = () => $("#file").click();
+$("#file").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (!Array.isArray(data)) throw 0;
+    const have = new Set(words.map(w => w.de.toLowerCase()));
+    let n = 0;
+    for (const w of data) if (w && w.de && !have.has(String(w.de).toLowerCase())) { words.push(w); n++; }
+    save(); renderList(); alert("Restored " + n + " new word(s).");
+  } catch (err) { alert("That file isn't a valid backup."); }
+  e.target.value = "";
+};
+
+/* ---------- boot ---------- */
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+renderRecent(); retryPending(); $("#word").focus();
+</script>
+</body>
+</html>
